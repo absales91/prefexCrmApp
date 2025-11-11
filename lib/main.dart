@@ -48,7 +48,7 @@ class PerfexApp extends StatelessWidget {
         ),
         tabBarTheme: TabBarThemeData(
           labelColor: Colors.white,
-          unselectedLabelColor: Colors.black87
+          unselectedLabelColor: Colors.white
         ),
         cardColor: Colors.white,
         textTheme: const TextTheme(

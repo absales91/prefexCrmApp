@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:techon_crm/screens/admin/invoice/create.dart';
+import 'package:techon_crm/screens/admin/invoice/view.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -177,6 +179,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: invoices.length,
                     itemBuilder: (context, index) {
+                      print(invoices[index]);
                       final inv = invoices[index];
                       final status = inv['status_name'] ?? '';
                       final color = _statusColor(status);
@@ -186,6 +189,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                         child: ListTile(
+                          onTap: (){
+                            Navigator.of(context).push(
+                              new MaterialPageRoute(builder: (context) => InvoiceDetailScreen(
+                                invoiceId: inv['id'].toString(),
+                              ))
+                            );
+                          },
                           contentPadding: const EdgeInsets.all(12),
                           leading: Container(
                             width: 5,
@@ -240,6 +250,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         backgroundColor: Colors.indigo,
         child: const Icon(Icons.add),
         onPressed: () {
+          Navigator.of(context).push(new MaterialPageRoute(builder: (context)=>CreateInvoiceScreen()));
           // Future: Create new invoice
         },
       ),

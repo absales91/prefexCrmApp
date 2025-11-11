@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:techon_crm/screens/admin/customer/customer_screen.dart';
-import 'package:techon_crm/screens/admin/invoice_screen.dart';
+import 'package:techon_crm/screens/admin/invoice/invoice_screen.dart';
 import 'package:techon_crm/screens/admin/lead_screen.dart';
 import 'package:techon_crm/screens/admin/project_screen.dart';
 import 'package:techon_crm/screens/admin/setting_screen.dart';
