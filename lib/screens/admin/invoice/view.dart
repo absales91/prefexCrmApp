@@ -89,7 +89,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text("Invoice Details"),
-        backgroundColor: const Color(0xFF162232),
+        // backgroundColor: const Color(0xFF162232),
         actions:  [
           IconButton(onPressed: ()=>{
             Navigator.of(context).push(new MaterialPageRoute(builder: (context) => EditInvoiceScreen(invoiceData: invoice)))

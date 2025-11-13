@@ -111,7 +111,7 @@ class _CustomerDetailsScreenState extends State<CustomerDetailsScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FB),
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        // backgroundColor: Colors.blueGrey[900],
         elevation: 0,
         title: const Text("Customer Details", style: TextStyle(fontWeight: FontWeight.w600)),
         actions: [

@@ -1,17 +1,16 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:techon_crm/screens/admin/customer/customer_screen.dart';
 import 'package:techon_crm/screens/admin/invoice/invoice_screen.dart';
-import 'package:techon_crm/screens/admin/lead_screen.dart';
-import 'package:techon_crm/screens/admin/project_screen.dart';
+import 'package:techon_crm/screens/admin/lead/lead_screen.dart';
+import 'package:techon_crm/screens/admin/project/project_screen.dart';
 import 'package:techon_crm/screens/admin/setting_screen.dart';
-import '../../services/auth_service.dart';
+import 'package:techon_crm/services/auth_service.dart';
 
 class DashboardAdmin extends StatefulWidget {
-  const DashboardAdmin({super.key});
+  const DashboardAdmin({Key? key}) : super(key: key);
 
   @override
   State<DashboardAdmin> createState() => _DashboardAdminState();
@@ -19,467 +18,481 @@ class DashboardAdmin extends StatefulWidget {
 
 class _DashboardAdminState extends State<DashboardAdmin> {
   bool isLoading = true;
-  int totalLeads = 0;
-  int totalProjects = 0;
-  List leadSummary = [];
-  List projectSummary = [];
+  Map<String, dynamic> d = {};
 
   final String baseUrl = "https://crm.msmesoftwares.com/perfex_mobile_app_api";
+  final prefs =  SharedPreferences.getInstance();
+  String? name;
+  String? email;
 
   @override
   void initState() {
     super.initState();
-    _loadDashboard();
+    loadDashboard();
   }
 
-  Future<void> _loadDashboard() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
+  // -----------------------------------------
+  // 🔥 Load Dashboard Data
+  // -----------------------------------------
+  Future<void> loadDashboard() async {
+    setState(() => isLoading = true);
 
-    if (token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Session expired! Please login again")),
-      );
-      return;
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? "";
+    final staffId = prefs.getString('staffid') ?? "";
+    name = await prefs.getString('name');
+    email = await prefs.getString('email');
 
     try {
-      setState(() => isLoading = true);
+      final url = Uri.parse("$baseUrl/dashboard_data");
+      final res = await http.post(url, body: {
+        "authentication_token": token,
+        "staffid": staffId
+      });
 
-      final leadsRes = await http.post(
-        Uri.parse('$baseUrl/get_my_leads'),
-        body: {
-          'authentication_token': token,
-          'start_from': '0',
-          'end_to': '50',
-        },
-      );
+      print("Dashboard Response → ${res.body}");
 
-      final projectsRes = await http.post(
-        Uri.parse('$baseUrl/get_my_projects'),
-        body: {
-          'authentication_token': token,
-          'start_from': '0',
-          'end_to': '50',
-        },
-      );
+      if (res.statusCode == 200) {
+        final json = jsonDecode(res.body);
 
-      if (leadsRes.statusCode == 200 && projectsRes.statusCode == 200) {
-        final leadData = jsonDecode(leadsRes.body);
-        final projectData = jsonDecode(projectsRes.body);
-
-        setState(() {
-          totalLeads = (leadData['leads'] as List?)?.length ?? 0;
-          totalProjects = (projectData['projects'] as List?)?.length ?? 0;
-          leadSummary = leadData['summary'] ?? [];
-          projectSummary = projectData['summary'] ?? [];
-          isLoading = false;
-        });
+        if (json['status'] == 1) {
+          setState(() {
+            d = json;
+            isLoading = false;
+          });
+        } else {
+          setState(() => isLoading = false);
+        }
       } else {
         setState(() => isLoading = false);
       }
     } catch (e) {
-      debugPrint("Dashboard error: $e");
       setState(() => isLoading = false);
+      print("Error loading dashboard → $e");
     }
   }
 
+  // -----------------------------------------
+  // 🔥 MAIN UI
+  // -----------------------------------------
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthService>(context);
-
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text("Admin Dashboard"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadDashboard,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.w700)),
+      ),
+      drawer: _buildDrawer(context, AuthService()),
+
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _dashboardUI(),
+    );
+  }
+
+  // -----------------------------------------
+  // 🔥 Dashboard Full UI
+  // -----------------------------------------
+  Widget _dashboardUI() {
+
+
+    final user = d['currentUser'] ?? {};
+
+    final customers = d['customerData'] ?? {};
+    final tasks = d['tasksData'] ?? {};
+    final leads = d['leadsData'] ?? {};
+    final tickets = d['ticketsData'] ?? {};
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          const SizedBox(height: 10),
+
+          _userHeader(
+            name ?? "",
+            email ?? "",
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await auth.logout();
-              if (mounted) {
+
+          const SizedBox(height: 20),
+          const Text("Overview",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+
+          // ---------- GRID ----------
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            childAspectRatio: 1.3,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            children: [
+              _statCard(Icons.group, "Active Customers",
+                  "${customers['activeCustomers'] ?? 0} of ${customers['totalCustomers'] ?? 0}", Colors.blue),
+
+              _statCard(Icons.check_circle, "Converted Leads",
+                  "${leads['convertedLeads'] ?? 0} of ${leads['totalLeads'] ?? 0}", Colors.green),
+
+              _statCard(Icons.task, "Pending Tasks",
+                  "${tasks['tasksNotFinished'] ?? 0} of ${tasks['totalTasks'] ?? 0}", Colors.orange),
+
+              _statCard(Icons.support_agent, "Tickets",
+                  "${tickets['openTickets'] ?? 0} of ${tickets['totalTickets'] ?? 0}",
+                  Colors.purple),
+            ],
+          ),
+
+          const SizedBox(height: 25),
+
+          const Text("Tasks Status",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+
+          _progressRow("Open Tickets", Colors.red,
+              tickets['openTickets'] ?? 0, tickets['totalTickets'] ?? 0),
+
+          _progressRow("Low Priority", Colors.green,
+              tickets['lowPriorityTickets'] ?? 0, tickets['totalTickets'] ?? 0),
+
+          _progressRow("Medium Priority", Colors.orange,
+              leads['convertedLeads'] ?? 0, leads['totalLeads'] ?? 0),
+
+          _progressRow("High Priority", Colors.red.shade900,
+              tickets['highPriorityTickets'] ?? 0, tickets['totalTickets'] ?? 0),
+        ],
+      ),
+    );
+  }
+
+  // -----------------------------------------
+  // 🔥 UI COMPONENTS
+  // -----------------------------------------
+
+  Widget _userHeader(String name, String email) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black12.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 3))
+          ]),
+      child: Row(
+        children: [
+          const CircleAvatar(
+              radius: 28,
+              backgroundColor: Colors.black12,
+              child: Icon(Icons.person, size: 32, color: Colors.grey)),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Welcome $name",
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(email,
+                  style:
+                  const TextStyle(fontSize: 13, color: Colors.black54)),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _statCard(IconData icon, String title, String value, Color color) {
+    return Container(
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black12.withOpacity(0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 3))
+          ]),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: color.withOpacity(0.1),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(height: 14),
+          Text(value,
+              style:
+              TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+          const SizedBox(height: 4),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  Widget _progressRow(String label, Color color, int value, int total) {
+    double percent = total == 0 ? 0 : value / total;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: Text(label)),
+          Expanded(
+            flex: 4,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: percent,
+                minHeight: 6,
+                color: color,
+                backgroundColor: Colors.grey.shade200,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text("${(percent * 100).round()}%"),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+Drawer _buildDrawer(BuildContext context, AuthService auth) {
+  return Drawer(
+    child: Container(
+// color: Colors.grey.shade100,
+      child: Column(
+        children: [
+// 🌈 Custom Drawer Header with Row Layout
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.indigo, Colors.blueAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 35,
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    size: 40,
+                    color: Colors.indigo.shade700,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        auth.name ?? 'Admin',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        auth.role ?? 'Staff',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout, color: Colors.white),
+                  tooltip: 'Logout',
+                  onPressed: () async {
+                    await auth.logout();
+                    Navigator.pushReplacementNamed(context, '/login');
+                  },
+                ),
+              ],
+            ),
+          ),
+
+// 📋 Main menu items
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _drawerTile(
+                  icon: Icons.dashboard,
+                  title: 'Dashboard',
+                  context: context,
+                  onTap: () => Navigator.pop(context),
+                ),
+                _drawerTile(
+                  icon: Icons.people,
+                  title: 'Customer',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => CustomerScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.phone,
+                  title: 'Contacts',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => LeadsScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.request_quote,
+                  title: 'Estimate',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => LeadsScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.description,
+                  title: 'Proposal',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => LeadsScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.people,
+                  title: 'Leads',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => LeadsScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.work,
+                  title: 'Projects',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => ProjectsScreen()));
+                  },
+                ),
+                _drawerTile(
+                  icon: Icons.receipt_long,
+                  title: 'Invoices',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => InvoicesScreen()));
+                  },
+                ),
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    "SETTINGS",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+                _drawerTile(
+                  icon: Icons.settings,
+                  title: 'App Settings',
+                  context: context,
+                  onTap: () {
+                    Navigator.push(
+                        context, MaterialPageRoute(builder: (_) => SettingsScreen()));
+                  },
+                ),
+              ],
+            ),
+          ),
+
+// 🚪 Bottom Logout (optional, since we have top logout)
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                top: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.exit_to_app, color: Colors.redAccent),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                    color: Colors.redAccent, fontWeight: FontWeight.w600),
+              ),
+              onTap: () async {
+                await auth.logout();
                 Navigator.pushReplacementNamed(context, '/login');
-              }
-            },
+              },
+            ),
           ),
         ],
       ),
-      drawer: _buildDrawer(context, auth),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-        onRefresh: _loadDashboard,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _welcomeHeader(auth),
-              const SizedBox(height: 20),
+    ),
+  );
+}
 
-              // Summary cards
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _statCard("Leads", totalLeads, Colors.blue, Icons.people),
-                  _statCard("Projects", totalProjects, Colors.green, Icons.work),
-                ],
-              ),
-
-              const SizedBox(height: 30),
-
-              // Lead summary chips
-              _summarySection("Lead Summary", leadSummary),
-
-              const SizedBox(height: 24),
-
-              // Project summary chips
-              _summarySection("Project Summary", projectSummary),
-            ],
+/// Helper Widget for menu items
+Widget _drawerTile({
+  required IconData icon,
+  required String title,
+  required BuildContext context,
+  required VoidCallback onTap,
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+    child: Card(
+// color: Colors.white,
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: Icon(icon, color: Colors.indigo),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 15,
           ),
         ),
+        onTap: onTap,
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
       ),
-    );
-  }
-
-  Drawer _buildDrawer(BuildContext context, AuthService auth) {
-    return Drawer(
-      child: Container(
-        // color: Colors.grey.shade100,
-        child: Column(
-          children: [
-            // 🌈 Custom Drawer Header with Row Layout
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 30),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.indigo, Colors.blueAccent],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 35,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.person,
-                      size: 40,
-                      color: Colors.indigo.shade700,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          auth.name ?? 'Admin',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          auth.role ?? 'Staff',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.white),
-                    tooltip: 'Logout',
-                    onPressed: () async {
-                      await auth.logout();
-                      Navigator.pushReplacementNamed(context, '/login');
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // 📋 Main menu items
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _drawerTile(
-                    icon: Icons.dashboard,
-                    title: 'Dashboard',
-                    context: context,
-                    onTap: () => Navigator.pop(context),
-                  ),
-                  _drawerTile(
-                    icon: Icons.people,
-                    title: 'Customer',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => CustomerScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.phone,
-                    title: 'Contacts',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => LeadsScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.request_quote,
-                    title: 'Estimate',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => LeadsScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.description,
-                    title: 'Proposal',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => LeadsScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.people,
-                    title: 'Leads',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => LeadsScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.work,
-                    title: 'Projects',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => ProjectsScreen()));
-                    },
-                  ),
-                  _drawerTile(
-                    icon: Icons.receipt_long,
-                    title: 'Invoices',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => InvoicesScreen()));
-                    },
-                  ),
-
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      "SETTINGS",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                  _drawerTile(
-                    icon: Icons.settings,
-                    title: 'App Settings',
-                    context: context,
-                    onTap: () {
-                      Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => SettingsScreen()));
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            // 🚪 Bottom Logout (optional, since we have top logout)
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  top: BorderSide(color: Colors.grey.shade300),
-                ),
-              ),
-              child: ListTile(
-                leading: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-                title: const Text(
-                  'Logout',
-                  style: TextStyle(
-                      color: Colors.redAccent, fontWeight: FontWeight.w600),
-                ),
-                onTap: () async {
-                  await auth.logout();
-                  Navigator.pushReplacementNamed(context, '/login');
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Helper Widget for menu items
-  Widget _drawerTile({
-    required IconData icon,
-    required String title,
-    required BuildContext context,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-      child: Card(
-        // color: Colors.white,
-        elevation: 0.5,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: ListTile(
-          leading: Icon(icon, color: Colors.indigo),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 15,
-            ),
-          ),
-          onTap: onTap,
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-        ),
-      ),
-    );
-  }
-
-
-
-  Widget _welcomeHeader(AuthService auth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Welcome, ${auth.name ?? 'Admin'} 👋",
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          "Manage leads, projects, and clients efficiently.",
-          style: TextStyle(color: Colors.black54),
-        ),
-      ],
-    );
-  }
-
-  Widget _statCard(String title, int count, Color color, IconData icon) {
-    return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 30),
-            const SizedBox(height: 8),
-            Text(
-              count.toString(),
-              style: TextStyle(
-                color: color,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _summarySection(String title, List summary) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-        const SizedBox(height: 10),
-        summary.isEmpty
-            ? const Text("No data available", style: TextStyle(color: Colors.grey))
-            : SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: summary.length,
-            itemBuilder: (context, index) {
-              final item = summary[index];
-              final name = item['name'] ?? 'Unknown';
-              final count = item['count'] ?? 0;
-              final colorHex = item['color'] ?? '#2196F3';
-
-              Color color;
-              try {
-                color = Color(int.parse(colorHex.replaceFirst('#', '0xff')));
-              } catch (e) {
-                color = Colors.blue;
-              }
-
-              return Container(
-                width: 120,
-                margin: const EdgeInsets.only(right: 10),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: color.withOpacity(0.4)),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(count.toString(),
-                        style: TextStyle(
-                            color: color,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18)),
-                    const SizedBox(height: 4),
-                    Text(name,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.black87)),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
+    ),
+  );
 }

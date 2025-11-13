@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:techon_crm/screens/admin/lead/create.dart';
+import 'package:techon_crm/screens/admin/lead/view.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -129,14 +131,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      // backgroundColor: const Color(0xFFF5F6FA),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Create Lead',
+        onPressed: (){
+          Navigator.of(context).push(MaterialPageRoute(builder: (context) => CreateLeadScreen()));
+        },
+      child: Icon(Icons.add),),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        // backgroundColor: Colors.white,
         title: const Text('Leads',
-            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600)),
+
+        ),
         centerTitle: true,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -147,7 +156,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black87)),
+                    // color: Colors.black87
+                )),
             const SizedBox(height: 12),
             if (leadSummary.isNotEmpty)
               SizedBox(
@@ -183,7 +193,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Colors.black87)),
+                        // color: Colors.black87
+                    )),
                 Icon(Icons.filter_alt_outlined, color: Colors.blue),
               ],
             ),
@@ -197,7 +208,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
                 itemBuilder: (context, index) {
                   if (index < leads.length) {
                     final lead = leads[index];
+                    print(lead);
                     return _leadCard(
+                      lead,
                       lead['name'] ?? lead['lead_name'] ?? 'No Name',
                       lead['company'] ?? lead['organization'] ?? '',
                       lead['status'] ?? 'Unknown',
@@ -223,6 +236,128 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   }
                 },
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _leadCard(
+      lead,
+      String name,
+      String company,
+      String status,
+      double amount,
+      String platform,
+      String date,
+      Color color,
+      ) {
+    return InkWell(
+      onTap: () {
+        // TODO: Navigate to lead details
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LeadDetailScreen(lead: lead),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            )
+          ],
+        ),
+
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ----------------------------------------------------
+            // 🔹 NAME + STATUS BADGE
+            // ----------------------------------------------------
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 6),
+
+            // ----------------------------------------------------
+            // 🏢 COMPANY
+            // ----------------------------------------------------
+            Row(
+              children: [
+                const Icon(Icons.business_outlined,
+                    color: Colors.grey, size: 15),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    company.isNotEmpty ? company : "No Company",
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+
+            const SizedBox(height: 14),
+
+            // ----------------------------------------------------
+            // 🔸 INFO ROWS (Value, Source, Date)
+            // ----------------------------------------------------
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _infoBox(Icons.currency_rupee, "Value",
+                    "₹${amount.toStringAsFixed(0)}"),
+
+                _infoBox(Icons.campaign_outlined, "Source",
+                    platform),
+
+                _infoBox(Icons.calendar_today_outlined, "Date",
+                    date),
+              ],
             ),
           ],
         ),
@@ -260,74 +395,37 @@ Widget _summaryCard(String title, String count, Color color) {
     ),
   );
 }
-Widget _leadCard(String name, String company, String status, double amount,
-    String platform, String date, Color color) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      boxShadow: [
-        BoxShadow(
-            color: Colors.black12.withOpacity(0.05),
-            blurRadius: 5,
-            offset: const Offset(0, 2))
-      ],
-    ),
-    child: Row(
+
+
+Widget _infoBox(IconData icon, String label, String value) {
+  return Flexible(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 5,
-          height: 60,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(10),
-          ),
+        Row(
+          children: [
+            Icon(icon, size: 14, color: Colors.grey),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 12, color: Colors.grey),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name,
-                  style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              Text(company,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(FontAwesomeIcons.circleDot, color: color, size: 10),
-                      const SizedBox(width: 6),
-                      Text(status,
-                          style: TextStyle(
-                              color: color, fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Text("₹$amount",
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 10),
-                      Text(platform,
-                          style:
-                          const TextStyle(color: Colors.grey, fontSize: 12)),
-                      const SizedBox(width: 10),
-                      Text(date,
-                          style:
-                          const TextStyle(color: Colors.grey, fontSize: 12)),
-                    ],
-                  )
-                ],
-              ),
-            ],
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
           ),
         ),
       ],
     ),
   );
 }
+

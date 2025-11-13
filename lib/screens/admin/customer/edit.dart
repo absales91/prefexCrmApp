@@ -279,7 +279,7 @@ class _EditCustomerScreenState extends State<EditCustomerScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text("Edit Customer"),
-        backgroundColor: const Color(0xFF162232),
+        // backgroundColor: const Color(0xFF162232),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

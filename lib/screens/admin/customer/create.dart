@@ -242,7 +242,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text("Add Customer"),
-        backgroundColor: const Color(0xFF162232),
+        // backgroundColor: const Color(0xFF162232),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

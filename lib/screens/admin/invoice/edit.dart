@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -42,6 +43,41 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
     super.initState();
     _loadInvoiceData();
     fetchDropdownData();
+  }
+  List<Map<String, dynamic>> _prepareNewItems() {
+    // Only include items that don't have a database ID
+    return items
+        .where((item) =>
+    item['id'] == null || item['id'].toString().startsWith('temp_'))
+        .map((item) {
+      // Make sure tax format matches backend requirement
+      List<Map<String, dynamic>> formattedTaxes = [];
+      if (item['taxes'] != null && item['taxes'] is List) {
+        for (var tax in item['taxes']) {
+          if (tax is Map && tax.containsKey('taxrate')) {
+            formattedTaxes.add({
+              "name": tax['name'] ?? "Tax ${tax['taxrate']}",
+              "taxrate": tax['taxrate'].toString(),
+            });
+          } else if (tax is num || tax is String) {
+            formattedTaxes.add({
+              "name": "Tax $tax",
+              "taxrate": tax.toString(),
+            });
+          }
+        }
+      }
+
+      return {
+        "id": 0,
+        "description": item['description'] ?? "",
+        "long_description": item['long_description'] ?? "",
+        "qty": item['qty'] ?? "1",
+        "unit": item['unit'] ?? "",
+        "rate": item['rate'] ?? "0",
+        "taxes": formattedTaxes,
+      };
+    }).toList();
   }
 
   void _loadInvoiceData() {
@@ -174,25 +210,14 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
 
     // 🧮 Calculate subtotal and total
     final subtotal = _calculateSubtotal();
-    final total = subtotal; // you can adjust for tax/discount if needed
+    final total = _calculateTotal();
 
-    // 🧾 Prepare formatted items
-    final formattedItems = items.map((item) {
-      return {
-        "id": item['id'] ?? 0, // if new, backend will ignore
-        "description": item['description'] ?? "",
-        "long_description": item['long_description'] ?? "",
-        "qty": item['qty'] ?? "1",
-        "unit": item['unit'] ?? "",
-        "rate": item['rate'] ?? "0",
-        "taxes": item['taxes'] ?? [], // must be an array (backend expects this)
-      };
-    }).toList();
+    // 🧾 Prepare new items only (for Perfex API)
+    final newItems = _prepareNewItems();
+    print("🟩 Prepared New Items: ${jsonEncode(newItems)}");
+    // 🧾 Prepare new items only (for Perfex API)
 
-    // 🪄 Prepare allowed payment modes array
-    // final allowedPaymentModes = selectedPaymentMode != null
-    //     ? [selectedPaymentMode.toString()]
-    //     : [];
+
 
     try {
       final url = Uri.parse("${AppConstants.apiBase}/update_invoice");
@@ -209,36 +234,36 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
         "discount_total": "0",
         "adjustment": "0",
         "total": total.toStringAsFixed(2),
-        'billing_street' : billingStreet.text.toString(),
+        "billing_street": billingStreet.text.toString(),
+        "newitems": jsonEncode(newItems), // ✅ send as JSON
+        "removed_items": jsonEncode(removedItemIds),
 
 
-        "newitems": jsonEncode(formattedItems),
       };
+
+      // ✅ Payment Modes Array
       for (int i = 0; i < selectedPaymentModes.length; i++) {
         body["allowed_payment_modes[$i]"] = selectedPaymentModes[i];
       }
 
-      print("🟦 UPDATE INVOICE BODY:\n${jsonEncode(body)}");
+      print("🟦 Sending update_invoice body: ${jsonEncode(body)}");
 
       final response = await http.post(url, body: body);
-      print("🟩 RESPONSE BODY: ${response.body}");
+      print("🟩 Response: ${response.statusCode} ${response.body}");
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['status'] == 1) {
-
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("✅ ${data['message']}")),
           );
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => InvoiceDetailScreen(
-                invoiceId: invoiceId,
-              ),
+              builder: (_) => InvoiceDetailScreen(invoiceId: invoiceId),
             ),
           );
-
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("⚠️ ${data['message']}")),
@@ -251,7 +276,7 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ Error: $e")),
+        SnackBar(content: Text("❌ Exception: $e")),
       );
     }
 
@@ -259,15 +284,169 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
   }
 
 
+
+
   double _calculateSubtotal() {
-    return items.fold<double>(
-        0, (sum, item) => sum + (double.tryParse(item['rate'].toString()) ?? 0));
+    return items.fold<double>(0, (sum, item) {
+      final qty = double.tryParse(item['qty']?.toString() ?? '1') ?? 1;
+      final rate = double.tryParse(item['rate']?.toString() ?? '0') ?? 0;
+      return sum + (qty * rate);
+    });
   }
+
+  double _calculateTotal() {
+    double subtotal = 0.0;
+    double totalTax = 0.0;
+
+    for (var item in items) {
+      final qty = double.tryParse(item['qty']?.toString() ?? '1') ?? 1;
+      final rate = double.tryParse(item['rate']?.toString() ?? '0') ?? 0;
+      final base = qty * rate;
+      subtotal += base;
+
+      // tax calculation
+      if (item['taxes'] != null && item['taxes'] is List) {
+        for (var tax in item['taxes']) {
+          double taxRate = 0.0;
+          if (tax is Map && tax.containsKey('taxrate')) {
+            taxRate = double.tryParse(tax['taxrate'].toString()) ?? 0.0;
+          } else if (tax is num || tax is String) {
+            taxRate = double.tryParse(tax.toString()) ?? 0.0;
+          }
+          totalTax += (base * taxRate / 100);
+        }
+      }
+    }
+
+    return subtotal + totalTax;
+  }
+
+
+  Widget _searchableClientDropdown({
+    required String label,
+    required String? selectedClient,
+    required List<Map<String, dynamic>> clients,
+    required Function(String?) onChanged,
+  }) {
+    final selectedName = clients.firstWhere(
+          (c) => c['id'].toString() == selectedClient,
+      orElse: () => {'name': 'Select Client'},
+    )['name'];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () async {
+          String searchQuery = '';
+          List<Map<String, dynamic>> filtered = clients;
+
+          final result = await showDialog<String>(
+            context: context,
+            barrierDismissible: true,
+            builder: (context) {
+              return StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return Dialog(
+                    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewInsets.bottom, // ✅ adjusts for keyboard
+                      ),
+                      child: SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 500), // ✅ limit dialog height
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: Text(
+                                  "Select Client",
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: TextField(
+                                  decoration: const InputDecoration(
+                                    prefixIcon: Icon(Icons.search),
+                                    hintText: "Search client...",
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (query) {
+                                    setDialogState(() {
+                                      searchQuery = query.toLowerCase();
+                                      filtered = clients
+                                          .where((c) => c['name']
+                                          .toString()
+                                          .toLowerCase()
+                                          .contains(searchQuery))
+                                          .toList();
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Flexible(
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const BouncingScrollPhysics(),
+                                  itemCount: filtered.length,
+                                  itemBuilder: (context, index) {
+                                    final client = filtered[index];
+                                    return ListTile(
+                                      title: Text(client['name'] ?? 'Unnamed'),
+                                      onTap: () =>
+                                          Navigator.pop(context, client['id'].toString()),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text("Cancel"),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+
+          if (result != null) {
+            onChanged(result);
+          }
+        },
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: Text(
+            selectedName ?? 'Select Client',
+            style: TextStyle(
+              color: selectedClient != null ? Colors.black : Colors.grey,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
 
   void _addNewItem() {
     setState(() {
       items.add({
-        'id': items.length + 1,
+        'id': 'temp_${DateTime.now().millisecondsSinceEpoch}', // temp ID
         'description': '',
         'long_description': '',
         'qty': 1,
@@ -278,11 +457,20 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
     });
   }
 
+
+  List<String> removedItemIds = [];
+
   void _removeItem(int index) {
+    final item = items[index];
+    // If it's an existing DB item (not temp_), mark for removal
+    if (item['id'] != null && !item['id'].toString().startsWith('temp_')) {
+      removedItemIds.add(item['id'].toString());
+    }
     setState(() {
       items.removeAt(index);
     });
   }
+
 
   Widget _buildTextField(
       String label,
@@ -331,7 +519,7 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Update Invoice"),
-        backgroundColor: const Color(0xFF162232),
+
       ),
       body: Form(
         key: _formKey,
@@ -341,8 +529,14 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildTextField("Number", invoiceNumber, readOnly: true),
-              _dropdownField("Select Client", selectedClient, clients,
-                      (v) => setState(() => selectedClient = v)),
+              _searchableClientDropdown(
+                label: "Search Client",
+                selectedClient: selectedClient,
+                clients: clients,
+                onChanged: (v) => setState(() => selectedClient = v),
+              ),
+
+
               _buildDateRow(),
               _buildTextField("Billing Street", billingStreet,isRequired: false),
               _dropdownField("Currency", selectedCurrency, currencies,
@@ -368,6 +562,7 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
               const SizedBox(height: 15),
               // 🧾 ITEMS SECTION
               const SizedBox(height: 15),
+
               Row(
                 children: [
                   Expanded(
@@ -433,7 +628,8 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
                           // 🟢 Add it to invoice items
                           setState(() {
                             items.add({
-                              'id': selected['id'],
+                              // 'id': selected['id'],
+                              'id': 'temp_${DateTime.now().millisecondsSinceEpoch}', // temp ID
                               'description': description,
                               'long_description': longDescription,
                               'qty': 1,
@@ -719,12 +915,12 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextFormField(
-              initialValue: item['description'],
+              initialValue: item['description']?.toString() ?? '',
               decoration: const InputDecoration(labelText: "Item Name"),
               onChanged: (v) => item['description'] = v,
             ),
             TextFormField(
-              initialValue: item['long_description'],
+              initialValue: item['long_description']?.toString() ?? '',
               decoration: const InputDecoration(labelText: "Description"),
               onChanged: (v) => item['long_description'] = v,
             ),
@@ -732,18 +928,17 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    initialValue: item['qty'].toString(),
+                    initialValue: item['qty']?.toString() ?? '1',
                     decoration: const InputDecoration(labelText: "Qty"),
                     keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (v) =>
-                    item['qty'] = double.tryParse(v) ?? 1.0,
+                    onChanged: (v) => item['qty'] = double.tryParse(v) ?? 1.0,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextFormField(
-                    initialValue: item['unit'],
+                    initialValue: item['unit']?.toString() ?? 'Piece',
                     decoration: const InputDecoration(labelText: "Unit"),
                     onChanged: (v) => item['unit'] = v,
                   ),
@@ -755,7 +950,7 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    initialValue: item['rate'].toString(),
+                    initialValue: item['rate']?.toString() ?? '0',
                     decoration: const InputDecoration(labelText: "Rate"),
                     keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -768,8 +963,8 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
                   onPressed: () => _removeItem(index),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                   icon: const Icon(Icons.close, color: Colors.white),
-                  label:
-                  const Text("Remove", style: TextStyle(color: Colors.white)),
+                  label: const Text("Remove",
+                      style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),
@@ -778,4 +973,5 @@ class _EditInvoiceScreenState extends State<EditInvoiceScreen> {
       ),
     );
   }
+
 }

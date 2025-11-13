@@ -247,7 +247,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.indigo,
+        // backgroundColor: Colors.indigo,
+
         child: const Icon(Icons.add),
         onPressed: () {
           Navigator.of(context).push(new MaterialPageRoute(builder: (context)=>CreateInvoiceScreen()));
